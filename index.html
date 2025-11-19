@@ -79,6 +79,10 @@
   <div id="chart"></div>
 
   <script>
+    // Facet settings for "Within" test
+    const PLOT_HEIGHT_PER_ROW = 360;
+    const FACET_COLS = 2;
+
     // Helper: "numeric if you can, else string" sort for year strings
     function safeYearOrder(values) {
       const u = Array.from(new Set(values.map(v => String(v).trim()).filter(v => v !== "")));
@@ -88,6 +92,17 @@
         if (aNum && bNum) return na - nb;
         return a.localeCompare(b);
       });
+    }
+
+    function makeColorMap(values) {
+      const palette = [
+        "#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd",
+        "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"
+      ];
+      const uniq = Array.from(new Set(values));
+      const map = new Map();
+      uniq.forEach((v, i) => map.set(v, palette[i % palette.length]));
+      return map;
     }
 
     const testSel = document.getElementById("testSel");
@@ -102,7 +117,7 @@
         return;
       }
 
-      // Normalize column names and values
+      // Normalize columns and values
       let data = dataRaw.map(row => {
         const out = {};
         for (const k in row) {
@@ -168,14 +183,14 @@
         const sexVal  = sexSel.value;
         const siteVal = siteSel.value;
 
-        // Filter
+        // Filter base
         let d = data.filter(r =>
           r.Comparison === compVal &&
           r.Sex === sexVal &&
           r.Site === siteVal
         );
 
-        // Race filter
+        // Race filter depends on Test
         if (testVal === "Across Counties, Total Population") {
           d = d.filter(r => r.Race === "All");
         } else {
@@ -195,35 +210,8 @@
 
         // Year ordering
         const years = safeYearOrder(d.map(r => r.Year));
-        // Grouping
-        let colorField, groups;
-        if (testVal === "Across Counties, Total Population") {
-          colorField = "County";
-        } else {
-          colorField = "Race";
-        }
-        groups = Array.from(new Set(d.map(r => r[colorField]))).filter(Boolean).sort();
 
-        // Build traces
-        const traces = groups.map(g => {
-          const dg = d.filter(r => r[colorField] === g)
-                      .sort((a,b) => years.indexOf(a.Year) - years.indexOf(b.Year));
-          return {
-            type: "scatter",
-            mode: "lines+markers",
-            name: g,
-            x: dg.map(r => r.Year),
-            y: dg.map(r => r.Cancer),
-            customdata: dg.map(r => r.p_clean),
-            hovertemplate: (
-              testVal === "Within Counties, by race/ethnicity"
-                ? "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata[0]}<extra>" + g + "</extra>"
-                : "Year=%{x}<br>Cancer=%{y:.2f}<extra>" + g + "</extra>"
-            )
-          };
-        });
-
-        // Footnotes
+        // Footnotes (shared across both modes)
         const annotations = [];
 
         // General SEER footnote (all graphs)
@@ -238,66 +226,185 @@
           font: {size: 8}
         });
 
-// Sig-based footnote (Across only, based on Year == "2018-2022")
-if (testVal === "Across Counties, Total Population") {
-  // Restrict to 2018-2022 rows
-  const d2018 = d.filter(r => String(r.Year).trim() === "2018-2022");
+        // Sig-based footnote (Across only, based on Year == 2018-2022)
+        if (testVal === "Across Counties, Total Population") {
+          const d2018 = d.filter(r => String(r.Year).trim() === "2018-2022");
+          if (d2018.length && d2018.some(r => "Sig" in r)) {
+            const sigRow = d2018.find(r => ((r.Sig || "").trim() !== ""));
+            let sigText = null;
+            if (sigRow) {
+              const sigVal = (sigRow.Sig || "").trim();
+              if (sigVal === "1") {
+                sigText = "Significant Difference between Polk and other Iowa counties.";
+              } else if (sigVal === "0") {
+                sigText = "No significant difference between Polk and other Iowa counties.";
+              }
+            }
+            if (sigText) {
+              annotations.push({
+                text: "<i>" + sigText + "</i>",
+                xref: "paper",
+                yref: "paper",
+                x: 0,
+                y: -0.16,
+                showarrow: false,
+                xanchor: "left",
+                font: {size: 10}
+              });
+            }
+          }
+        }
 
-  if (d2018.length && d2018.some(r => "Sig" in r)) {
-    const sigVals = Array.from(
-      new Set(
-        d2018
-          .map(r => (r.Sig || "").trim())
-          .filter(v => v !== "")
-      )
-    );
+        // ----- ACROSS: single panel, color = County -----
+        if (testVal === "Across Counties, Total Population") {
+          const colorField = "County";
+          const groups = Array.from(new Set(d.map(r => r[colorField]))).filter(Boolean).sort();
 
-    let sigText = null;
-    if (sigVals.includes("1")) {
-      sigText = "Significant Difference between Polk and other Iowa counties.";
-    } else if (sigVals.includes("0")) {
-      sigText = "No significant difference between Polk and other Iowa counties.";
-    }
+          const traces = groups.map(g => {
+            const dg = d.filter(r => r[colorField] === g)
+                        .sort((a,b) => years.indexOf(a.Year) - years.indexOf(b.Year));
+            return {
+              type: "scatter",
+              mode: "lines+markers",
+              name: g,
+              x: dg.map(r => r.Year),
+              y: dg.map(r => r.Cancer),
+              customdata: dg.map(r => r.p_clean),
+              hovertemplate:
+                "Year=%{x}<br>Cancer=%{y:.2f}<extra>" + g + "</extra>"
+            };
+          });
 
-    if (sigText) {
-      annotations.push({
-        text: "<i>" + sigText + "</i>",
-        xref: "paper",
-        yref: "paper",
-        x: 0,
-        y: -0.16,
-        showarrow: false,
-        xanchor: "left",
-        font: {size: 10}
-      });
-    }
-  }
-}
+          const layout = {
+            xaxis: {
+              title: null,
+              type: "category",
+              categoryorder: "array",
+              categoryarray: years
+            },
+            yaxis: {
+              title: "Cancer Rate",
+              showgrid: true
+            },
+            hovermode: "x unified",
+            margin: {l:40, r:20, t:10, b:60},
+            legend: {
+              orientation: "h",
+              y: -0.35,
+              title: {text: ""}
+            },
+            annotations: annotations
+          };
 
+          Plotly.newPlot("chart", traces, layout, {displayModeBar:true, responsive:true});
+          return;
+        }
 
+        // ----- WITHIN: facet by County, color = Race -----
+        const counties = Array.from(new Set(d.map(r => r.County))).filter(Boolean).sort();
+        const allRaces = Array.from(new Set(d.map(r => r.Race))).filter(Boolean).sort();
+        const colorMap = makeColorMap(allRaces);
+
+        const rows = Math.ceil(counties.length / FACET_COLS);
+        const colWidth = 1 / FACET_COLS;
+        const rowHeight = 1 / Math.max(rows, 1);
+
+        const subplotInfo = counties.map((_, idx) => {
+          const r = Math.floor(idx / FACET_COLS);
+          const c = idx % FACET_COLS;
+          const x0 = c * colWidth, x1 = x0 + colWidth;
+          const y1 = 1 - r * rowHeight, y0 = y1 - rowHeight;
+          return {x:[x0, x1], y:[y0, y1]};
+        });
+
+        const traces = [];
         const layout = {
-          xaxis: {
-            title: null,
-            type: "category",
-            categoryorder: "array",
-            categoryarray: years
-          },
-          yaxis: {
-            title: "Cancer Rate",
-            showgrid: true
-            // auto range
-          },
-          hovermode: "x unified",
-          margin: {l:40, r:20, t:10, b:60},
+          margin: {l: 70, r: 40, t: 60, b: 80},
+          hovermode: "closest",
           legend: {
             orientation: "h",
-            y: -0.35,
+            yanchor: "bottom",
+            y: -0.25,
+            xanchor: "center",
+            x: 0.5,
+            bgcolor: "rgba(255,255,255,0.7)",
             title: {text: ""}
           },
-          annotations: annotations
+          annotations: annotations,
+          yaxis: {title: {text: "Cancer Rate"}, showgrid: true, zeroline: false}
         };
 
-        Plotly.newPlot("chart", traces, layout, {displayModeBar:true, responsive:true});
+        counties.forEach((countyVal, idx) => {
+          const sub = d.filter(r => r.County === countyVal);
+
+          const axId = idx === 0 ? "" : String(idx+1);
+          const xaxisName = "xaxis" + axId;
+          const yaxisName = "yaxis" + axId;
+
+          layout[xaxisName] = {
+            domain: subplotInfo[idx].x,
+            type: "category",
+            categoryorder: "array",
+            categoryarray: years,
+            title: {text: ""},
+            tickangle: 0
+          };
+          layout[yaxisName] = idx === 0 ? layout.yaxis
+                                        : {...layout.yaxis, title: {text: ""}};
+
+          // County title annotation
+          annotations.push({
+            text: countyVal,
+            xref: "paper",
+            yref: "paper",
+            x: (subplotInfo[idx].x[0] + subplotInfo[idx].x[1]) / 2,
+            y: subplotInfo[idx].y[1] + 0.03,
+            showarrow: false,
+            align: "center",
+            font: {size: 14, color: "#111", weight: "bold"}
+          });
+
+          // One trace per Race in this facet
+          const raceLevels = Array.from(new Set(sub.map(r => r.Race))).filter(Boolean).sort();
+
+          raceLevels.forEach(raceVal => {
+            const gdat = sub
+              .filter(r => r.Race === raceVal)
+              .sort((a,b) => years.indexOf(a.Year) - years.indexOf(b.Year));
+
+            const showLegend = idx === 0;
+            const customP = gdat.map(r => r.p_clean);
+
+            const trace = {
+              type: "scatter",
+              mode: "lines+markers",
+              name: raceVal,
+              legendgroup: raceVal,
+              showlegend: showLegend,
+              x: gdat.map(r => r.Year),
+              y: gdat.map(r => r.Cancer),
+              customdata: customP,
+              hovertemplate:
+                "Year=%{x}<br>" +
+                "Cancer=%{y:.2f}<br>" +
+                "p=%{customdata[0]}<extra></extra>",
+              marker: {size: 6, color: colorMap.get(raceVal)},
+              line: {width: 2, color: colorMap.get(raceVal)},
+              xaxis: "x" + axId,
+              yaxis: "y" + axId
+            };
+
+            traces.push(trace);
+          });
+        });
+
+        const plotHeight = Math.max(550, rows * PLOT_HEIGHT_PER_ROW);
+        Plotly.newPlot(
+          "chart",
+          traces,
+          {...layout, height: plotHeight},
+          {responsive: true, displaylogo: false}
+        );
       }
 
       testSel.addEventListener("change", update);
