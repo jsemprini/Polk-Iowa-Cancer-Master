@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Polk County Cancer Master Trends</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Plotly + d3 -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+    }
+    .row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      margin-top: 8px;
+    }
+    .control {
+      display: flex;
+      flex-direction: column;
+      min-width: 220px;
+    }
+    label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #555;
+      margin-bottom: 6px;
+    }
+    select {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    #chart {
+      width: 100%;
+      max-width: 1100px;
+      height: 520px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Polk County Cancer Master Trends</h1>
+
+  <!-- Controls -->
+  <div class="row">
+    <div class="control">
+      <label for="testSel">Test</label>
+      <select id="testSel">
+        <option>Across Counties, Total Population</option>
+        <option>Within Counties, by race/ethnicity</option>
+      </select>
+    </div>
+    <div class="control">
+      <label for="compSel">Comparison</label>
+      <select id="compSel"></select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="control">
+      <label for="sexSel">Sex</label>
+      <select id="sexSel"></select>
+    </div>
+    <div class="control">
+      <label for="siteSel">Site</label>
+      <select id="siteSel"></select>
+    </div>
+  </div>
+
+  <div id="chart"></div>
+
+  <script>
+    // Helper: "numeric if you can, else string" sort for year strings
+    function safeYearOrder(values) {
+      const u = Array.from(new Set(values.map(v => String(v).trim()).filter(v => v !== "")));
+      return u.sort((a, b) => {
+        const na = +a, nb = +b;
+        const aNum = !isNaN(na), bNum = !isNaN(nb);
+        if (aNum && bNum) return na - nb;
+        return a.localeCompare(b);
+      });
+    }
+
+    const testSel = document.getElementById("testSel");
+    const compSel = document.getElementById("compSel");
+    const sexSel  = document.getElementById("sexSel");
+    const siteSel = document.getElementById("siteSel");
+
+    // Load CSV (must be in same folder, named data.csv)
+    d3.csv("data.csv").then(function(dataRaw) {
+      if (!dataRaw.length) {
+        document.getElementById("chart").innerHTML = "<b>Error:</b> data.csv is empty.";
+        return;
+      }
+
+      // Normalize column names and values
+      let data = dataRaw.map(row => {
+        const out = {};
+        for (const k in row) {
+          if (Object.prototype.hasOwnProperty.call(row, k)) {
+            const key = k.trim();
+            const val = (row[k] == null ? "" : String(row[k])).trim();
+            out[key] = val;
+          }
+        }
+        return out;
+      });
+
+      // Required columns
+      const need = new Set(["Year","Sex","Site","Cancer","County","Race"]);
+      const has = new Set(Object.keys(data[0]));
+      for (const c of need) {
+        if (!has.has(c)) {
+          document.getElementById("chart").innerHTML =
+            `<b>Error:</b> Missing column <code>${c}</code> in data.csv`;
+          return;
+        }
+      }
+
+      // Ensure Comparison exists
+      if (!has.has("Comparison")) {
+        data.forEach(d => d.Comparison = "All");
+      }
+
+      // Coerce numeric Cancer & p, keep strings for others
+      data.forEach(d => {
+        d.Year = String(d.Year).trim();
+        d.Cancer = d.Cancer === "" ? NaN : +d.Cancer;
+        if ("p" in d) {
+          d.p = d.p === "" ? NaN : +d.p;
+        }
+        if ("Sig" in d) {
+          d.Sig = String(d.Sig).trim();
+        }
+        // p_clean: formatted p for hover
+        if ("p" in d && !isNaN(d.p)) {
+          d.p_clean = d.p.toFixed(3);
+        } else {
+          d.p_clean = "";
+        }
+      });
+
+      // Build dropdown options
+      const comps = Array.from(new Set(data.map(d => d.Comparison))).filter(Boolean).sort();
+      const sexes = Array.from(new Set(data.map(d => d.Sex))).filter(Boolean).sort();
+      const sites = Array.from(new Set(data.map(d => d.Site))).filter(Boolean).sort();
+
+      comps.forEach(v => compSel.add(new Option(v, v)));
+      sexes.forEach(v => sexSel.add(new Option(v, v)));
+      sites.forEach(v => siteSel.add(new Option(v, v)));
+
+      if (comps.length) compSel.value = comps[0];
+      if (sexes.length) sexSel.value = sexes[0];
+      if (sites.length) siteSel.value = sites[0];
+
+      function update() {
+        const testVal = testSel.value;
+        const compVal = compSel.value;
+        const sexVal  = sexSel.value;
+        const siteVal = siteSel.value;
+
+        // Filter
+        let d = data.filter(r =>
+          r.Comparison === compVal &&
+          r.Sex === sexVal &&
+          r.Site === siteVal
+        );
+
+        // Race filter
+        if (testVal === "Across Counties, Total Population") {
+          d = d.filter(r => r.Race === "All");
+        } else {
+          d = d.filter(r => r.Race !== "All");
+        }
+
+        // Drop missing Cancer
+        d = d.filter(r => !isNaN(r.Cancer));
+
+        if (!d.length) {
+          Plotly.newPlot("chart", [], {
+            title: "No data for this selection",
+            margin: {l:40,r:20,t:40,b:40}
+          }, {responsive:true});
+          return;
+        }
+
+        // Year ordering
+        const years = safeYearOrder(d.map(r => r.Year));
+        // Grouping
+        let colorField, groups;
+        if (testVal === "Across Counties, Total Population") {
+          colorField = "County";
+        } else {
+          colorField = "Race";
+        }
+        groups = Array.from(new Set(d.map(r => r[colorField]))).filter(Boolean).sort();
+
+        // Build traces
+        const traces = groups.map(g => {
+          const dg = d.filter(r => r[colorField] === g)
+                      .sort((a,b) => years.indexOf(a.Year) - years.indexOf(b.Year));
+          return {
+            type: "scatter",
+            mode: "lines+markers",
+            name: g,
+            x: dg.map(r => r.Year),
+            y: dg.map(r => r.Cancer),
+            customdata: dg.map(r => r.p_clean),
+            hovertemplate: (
+              testVal === "Within Counties, by race/ethnicity"
+                ? "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata[0]}<extra>" + g + "</extra>"
+                : "Year=%{x}<br>Cancer=%{y:.2f}<extra>" + g + "</extra>"
+            )
+          };
+        });
+
+        // Footnotes
+        const annotations = [];
+
+        // General SEER footnote (all graphs)
+        annotations.push({
+          text: "All rates are reported as cancers per 100,000 population. Source: SEER.",
+          xref: "paper",
+          yref: "paper",
+          x: 0,
+          y: -0.24,
+          showarrow: false,
+          xanchor: "left",
+          font: {size: 8}
+        });
+
+        // Sig-based footnote (Across only)
+        if (testVal === "Across Counties, Total Population" && d.some(r => "Sig" in r)) {
+          const sigVals = Array.from(
+            new Set(d.map(r => (r.Sig || "").trim()).filter(v => v !== ""))
+          );
+          let sigText = null;
+          if (sigVals.includes("1")) {
+            sigText = "Significant Difference between Polk and other Iowa counties.";
+          } else if (sigVals.includes("0")) {
+            sigText = "No significant difference between Polk and other Iowa counties.";
+          }
+          if (sigText) {
+            annotations.push({
+              text: "<i>" + sigText + "</i>",
+              xref: "paper",
+              yref: "paper",
+              x: 0,
+              y: -0.16,
+              showarrow: false,
+              xanchor: "left",
+              font: {size: 10}
+            });
+          }
+        }
+
+        const layout = {
+          xaxis: {
+            title: null,
+            type: "category",
+            categoryorder: "array",
+            categoryarray: years
+          },
+          yaxis: {
+            title: "Cancer Rate",
+            showgrid: true
+            // no fixed range → Plotly chooses optimal
+          },
+          hovermode: "x unified",
+          margin: {l:40, r:20, t:10, b:60},
+          legend: {
+            orientation: "h",
+            y: -0.35,
+            title: {text: ""}
+          },
+          annotations: annotations
+        };
+
+        Plotly.newPlot("chart", traces, layout, {displayModeBar:true, responsive:true});
+      }
+
+      testSel.addEventListener("change", update);
+      compSel.addEventListener("change", update);
+      sexSel.addEventListener("change", update);
+      siteSel.addEventListener("change", update);
+
+      // Initial render
+      update();
+    }).catch(err => {
+      document.getElementById("chart").innerHTML =
+        `<b>Load error:</b> ${err}`;
+    });
+  </script>
+</body>
+</html>
