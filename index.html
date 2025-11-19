@@ -79,7 +79,6 @@
   <div id="chart"></div>
 
   <script>
-    // Facet settings for "Within" test
     const PLOT_HEIGHT_PER_ROW = 360;
     const FACET_COLS = 2;
 
@@ -153,9 +152,6 @@
         if ("p" in d) {
           d.p = d.p === "" ? NaN : +d.p;
         }
-        if ("Sig" in d) {
-          d.Sig = String(d.Sig).trim();
-        }
         // p_clean: formatted p for hover
         if ("p" in d && !isNaN(d.p)) {
           d.p_clean = d.p.toFixed(3);
@@ -211,7 +207,7 @@
         // Year ordering
         const years = safeYearOrder(d.map(r => r.Year));
 
-        // Footnotes (shared across both modes)
+        // Footnotes (shared)
         const annotations = [];
 
         // General SEER footnote (all graphs)
@@ -226,36 +222,7 @@
           font: {size: 8}
         });
 
-        // Sig-based footnote (Across only, based on Year == 2018-2022)
-        if (testVal === "Across Counties, Total Population") {
-          const d2018 = d.filter(r => String(r.Year).trim() === "2018-2022");
-          if (d2018.length && d2018.some(r => "Sig" in r)) {
-            const sigRow = d2018.find(r => ((r.Sig || "").trim() !== ""));
-            let sigText = null;
-            if (sigRow) {
-              const sigVal = (sigRow.Sig || "").trim();
-              if (sigVal === "1") {
-                sigText = "Significant Difference between Polk and other Iowa counties.";
-              } else if (sigVal === "0") {
-                sigText = "No significant difference between Polk and other Iowa counties.";
-              }
-            }
-            if (sigText) {
-              annotations.push({
-                text: "<i>" + sigText + "</i>",
-                xref: "paper",
-                yref: "paper",
-                x: 0,
-                y: -0.16,
-                showarrow: false,
-                xanchor: "left",
-                font: {size: 10}
-              });
-            }
-          }
-        }
-
-        // ----- ACROSS: single panel, color = County -----
+        // ----- ACROSS: single panel, color = County, hover includes p -----
         if (testVal === "Across Counties, Total Population") {
           const colorField = "County";
           const groups = Array.from(new Set(d.map(r => r[colorField]))).filter(Boolean).sort();
@@ -271,7 +238,7 @@
               y: dg.map(r => r.Cancer),
               customdata: dg.map(r => r.p_clean),
               hovertemplate:
-                "Year=%{x}<br>Cancer=%{y:.2f}<extra>" + g + "</extra>"
+                "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata[0]}<extra>" + g + "</extra>"
             };
           });
 
@@ -285,6 +252,7 @@
             yaxis: {
               title: "Cancer Rate",
               showgrid: true
+              // auto range
             },
             hovermode: "x unified",
             margin: {l:40, r:20, t:10, b:60},
@@ -300,7 +268,7 @@
           return;
         }
 
-        // ----- WITHIN: facet by County, color = Race -----
+        // ----- WITHIN: facet by County, color = Race, shared y-range -----
         const counties = Array.from(new Set(d.map(r => r.County))).filter(Boolean).sort();
         const allRaces = Array.from(new Set(d.map(r => r.Race))).filter(Boolean).sort();
         const colorMap = makeColorMap(allRaces);
@@ -317,6 +285,10 @@
           return {x:[x0, x1], y:[y0, y1]};
         });
 
+        // shared y-range across all facets
+        const globalYmin = Math.min(...d.map(r => r.Cancer));
+        const globalYmax = Math.max(...d.map(r => r.Cancer));
+
         const traces = [];
         const layout = {
           margin: {l: 70, r: 40, t: 60, b: 80},
@@ -330,8 +302,7 @@
             bgcolor: "rgba(255,255,255,0.7)",
             title: {text: ""}
           },
-          annotations: annotations,
-          yaxis: {title: {text: "Cancer Rate"}, showgrid: true, zeroline: false}
+          annotations: annotations
         };
 
         counties.forEach((countyVal, idx) => {
@@ -349,8 +320,14 @@
             title: {text: ""},
             tickangle: 0
           };
-          layout[yaxisName] = idx === 0 ? layout.yaxis
-                                        : {...layout.yaxis, title: {text: ""}};
+
+          layout[yaxisName] = {
+            domain: subplotInfo[idx].y,
+            title: {text: idx === 0 ? "Cancer Rate" : ""},
+            showgrid: true,
+            zeroline: false,
+            range: [globalYmin, globalYmax]   // shared y-range across facets
+          };
 
           // County title annotation
           annotations.push({
