@@ -238,30 +238,42 @@
           font: {size: 8}
         });
 
-        // Sig-based footnote (Across only)
-        if (testVal === "Across Counties, Total Population" && d.some(r => "Sig" in r)) {
-          const sigVals = Array.from(
-            new Set(d.map(r => (r.Sig || "").trim()).filter(v => v !== ""))
-          );
-          let sigText = null;
-          if (sigVals.includes("1")) {
-            sigText = "Significant Difference between Polk and other Iowa counties.";
-          } else if (sigVals.includes("0")) {
-            sigText = "No significant difference between Polk and other Iowa counties.";
-          }
-          if (sigText) {
-            annotations.push({
-              text: "<i>" + sigText + "</i>",
-              xref: "paper",
-              yref: "paper",
-              x: 0,
-              y: -0.16,
-              showarrow: false,
-              xanchor: "left",
-              font: {size: 10}
-            });
-          }
-        }
+// Sig-based footnote (Across only, based on Year == "2018-2022")
+if (testVal === "Across Counties, Total Population") {
+  // Restrict to 2018-2022 rows
+  const d2018 = d.filter(r => String(r.Year).trim() === "2018-2022");
+
+  if (d2018.length && d2018.some(r => "Sig" in r)) {
+    const sigVals = Array.from(
+      new Set(
+        d2018
+          .map(r => (r.Sig || "").trim())
+          .filter(v => v !== "")
+      )
+    );
+
+    let sigText = null;
+    if (sigVals.includes("1")) {
+      sigText = "Significant Difference between Polk and other Iowa counties.";
+    } else if (sigVals.includes("0")) {
+      sigText = "No significant difference between Polk and other Iowa counties.";
+    }
+
+    if (sigText) {
+      annotations.push({
+        text: "<i>" + sigText + "</i>",
+        xref: "paper",
+        yref: "paper",
+        x: 0,
+        y: -0.16,
+        showarrow: false,
+        xanchor: "left",
+        font: {size: 10}
+      });
+    }
+  }
+}
+
 
         const layout = {
           xaxis: {
