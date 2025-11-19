@@ -238,7 +238,7 @@
               y: dg.map(r => r.Cancer),
               customdata: dg.map(r => r.p_clean),
               hovertemplate:
-                "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata[0]}<extra>" + g + "</extra>"
+                "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata}<extra>" + g + "</extra>"
             };
           });
 
@@ -364,7 +364,7 @@
               hovertemplate:
                 "Year=%{x}<br>" +
                 "Cancer=%{y:.2f}<br>" +
-                "p=%{customdata[0]}<extra></extra>",
+                "p=%{customdata}<extra></extra>",
               marker: {size: 6, color: colorMap.get(raceVal)},
               line: {width: 2, color: colorMap.get(raceVal)},
               xaxis: "x" + axId,
