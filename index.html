@@ -270,7 +270,7 @@
         }
 
         // ----- WITHIN: facet by County, color = Race, shared y-range -----
-        const counties = Array.from(new Set(d.map(r => r.County))).filter(Boolean).sort();
+        const counties = Array.from(new Set(d.map(r => r.County))).filter(Boolean).sort().reverse();
         const allRaces = Array.from(new Set(d.map(r => r.Race))).filter(Boolean).sort();
         const colorMap = makeColorMap(allRaces);
 
