@@ -237,9 +237,13 @@
               x: dg.map(r => r.Year),
               y: dg.map(r => r.Cancer),
               // customdata: each entry is [p_clean] so we can safely use customdata[0]
-              customdata: dg.map(r => [r.p_clean]),
-              hovertemplate:
-                "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata[0]}<extra>" + g + "</extra>"
+              hovertext: dg.map(r =>
+  r.p_clean && r.p_clean !== ""
+    ? `Year=${r.Year}<br>Cancer=${r.Cancer.toFixed(2)}<br>p=${r.p_clean}`
+    : `Year=${r.Year}<br>Cancer=${r.Cancer.toFixed(2)}`
+),
+hoverinfo: "text",
+
             };
           });
 
@@ -367,11 +371,13 @@
               showlegend: showLegend,
               x: gdat.map(r => r.Year),
               y: gdat.map(r => r.Cancer),
-              customdata: customP,
-              hovertemplate:
-                "Year=%{x}<br>" +
-                "Cancer=%{y:.2f}<br>" +
-                "p=%{customdata[0]}<extra></extra>",
+              hovertext: gdat.map(r =>
+  r.p_clean && r.p_clean !== ""
+    ? `Year=${r.Year}<br>Cancer=${r.Cancer.toFixed(2)}<br>p=${r.p_clean}`
+    : `Year=${r.Year}<br>Cancer=${r.Cancer.toFixed(2)}`
+),
+hoverinfo: "text",
+
               marker: {size: 6, color: colorMap.get(raceVal)},
               line: {width: 2, color: colorMap.get(raceVal)},
               xaxis: "x" + axId,
