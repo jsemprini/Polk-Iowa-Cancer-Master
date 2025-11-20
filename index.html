@@ -152,7 +152,7 @@
         if ("p" in d) {
           d.p = d.p === "" ? NaN : +d.p;
         }
-        // p_clean: formatted p for hover
+        // p_clean: formatted p for hover (string or "")
         if ("p" in d && !isNaN(d.p)) {
           d.p_clean = d.p.toFixed(3);
         } else {
@@ -236,9 +236,10 @@
               name: g,
               x: dg.map(r => r.Year),
               y: dg.map(r => r.Cancer),
-              customdata: dg.map(r => r.p_clean),
+              // customdata: each entry is [p_clean] so we can safely use customdata[0]
+              customdata: dg.map(r => [r.p_clean]),
               hovertemplate:
-                "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata}<extra>" + g + "</extra>"
+                "Year=%{x}<br>Cancer=%{y:.2f}<br>p=%{customdata[0]}<extra>" + g + "</extra>"
             };
           });
 
@@ -285,9 +286,14 @@
           return {x:[x0, x1], y:[y0, y1]};
         });
 
-        // shared y-range across all facets
-        const globalYmin = Math.min(...d.map(r => r.Cancer));
-        const globalYmax = Math.max(...d.map(r => r.Cancer));
+        // shared y-range across all facets with padding
+        const cancers = d.map(r => r.Cancer);
+        let globalYmin = Math.min(...cancers);
+        let globalYmax = Math.max(...cancers);
+        let pad = (globalYmax - globalYmin) * 0.05;
+        if (!isFinite(pad) || pad === 0) pad = 1;
+        globalYmin = globalYmin - pad;
+        globalYmax = globalYmax + pad;
 
         const traces = [];
         const layout = {
@@ -350,7 +356,7 @@
               .sort((a,b) => years.indexOf(a.Year) - years.indexOf(b.Year));
 
             const showLegend = idx === 0;
-            const customP = gdat.map(r => r.p_clean);
+            const customP = gdat.map(r => [r.p_clean]);
 
             const trace = {
               type: "scatter",
@@ -364,7 +370,7 @@
               hovertemplate:
                 "Year=%{x}<br>" +
                 "Cancer=%{y:.2f}<br>" +
-                "p=%{customdata}<extra></extra>",
+                "p=%{customdata[0]}<extra></extra>",
               marker: {size: 6, color: colorMap.get(raceVal)},
               line: {width: 2, color: colorMap.get(raceVal)},
               xaxis: "x" + axId,
